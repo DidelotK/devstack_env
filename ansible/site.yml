@@ -1,0 +1,48 @@
+---
+
+- hosts: all
+  become: yes
+  vars:
+    stack_user: stack
+  tasks:
+    - name: Create new user.
+      user:
+        name: "{{ stack_user }}"
+        groups: sudo
+        shell: /bin/bash
+        append: yes
+
+    - name: Add stack user stack in sudoers file.
+      lineinfile:
+        path: /etc/sudoers
+        state: present
+        regexp: "^%{{ stack_user }} ALL="
+        line: "%{{ stack_user }} ALL=(ALL) NOPASSWD: ALL"
+        validate: '/usr/sbin/visudo -cf %s'
+
+    - name: Update repositories cache and install dependencies.
+      apt:
+        name: "{{ item }}"
+        update_cache: yes
+      with_items:
+        - git
+        - emacs
+
+    - name: Clone devstack repository.
+      git:
+        repo: 'https://git.openstack.org/openstack-dev/devstack'
+        clone: yes
+        dest: "/home/{{ stack_user }}/devstack"
+      become_user: "{{ stack_user }}"
+
+    - name: Create a local.conf.
+      template:
+        src: templates/local.conf
+        dest: "/home/{{ stack_user }}/devstack/local.conf"
+        owner: "{{ stack_user }}"
+        mode: 0644
+      become_user: "{{ stack_user }}"
+
+    - name: Start the install (take 20-30/min).
+      shell: "/home/{{ stack_user }}/devstack/stack.sh"
+      become_user: "{{ stack_user }}"
